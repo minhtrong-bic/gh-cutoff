@@ -1,35 +1,183 @@
 #!/usr/bin/env bash
-set -e
+# set -eE
 
-echo "Hello gh-cutoff!"
+#!/bin/bash
 
-# Snippets to help get started:
+# Set the name of the organization
+# ORG_NAME="minhtrong-bic"
+CUTOFF_BRANCHES=("develop" "staging")
 
-# Determine if an executable is in the PATH
-# if ! type -p ruby >/dev/null; then
-#   echo "Ruby not found on the system" >&2
-#   exit 1
-# fi
+# REPOSITORIES_IN_SCOPE=(
+#   # "test-bic-clickup-automation"
+#   # "bic-clickup-automation"
+#   # "bic-activity-log-service"
+#   # "bic-feed-service"
+#   # "bic-notification-service"
+#   # "bic-upload-manage-service"
+#   "bic-group-service"
+#   # "bic-group-web"
+#   # "bic-chat-web"
+#   # "bic-chat-service"
+#   # "bic-staff-web"
+# )
 
-# Pass arguments through to another command
-# gh issue list "$@" -R cli/cli
+TODAY=$(date +%Y%m%d)
 
-# Using the gh api command to retrieve and format information
-# QUERY='
-#   query($endCursor: String) {
-#     viewer {
-#       repositories(first: 100, after: $endCursor) {
-#         nodes {
-#           nameWithOwner
-#           stargazerCount
-#         }
-#       }
+owner=""
+repo=""
+
+# Function to display script usage
+function display_usage {
+  echo "Usage: gh cutoff [--o owner] [--r repo]"
+  echo ""
+  echo "Options:"
+  echo "  -o owner        Specify the owner of the repository you want to cutoff branches"
+  echo "  -r repo         Specify the repository you want to cutoff branches"
+  echo ""
+  exit 1
+}
+
+
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+    -o)
+      owner="$2"
+      shift
+      shift
+      ;;
+    -r)
+      repo="$2"
+      shift
+      shift
+      ;;
+    *)
+      display_usage
+      ;;
+  esac
+done
+
+# Check if required options are provided
+if [[ -z "$owner" ]]; then
+  echo "Error: owner name is required"
+  display_usage
+fi
+if [[ -z "$repo" ]]; then
+  echo "Error: repo name is required"
+  display_usage
+fi
+
+# function openProtectedBranchRule {
+#   echo -e "\n===> Open protection rule to protected branches \n"
+#   for branchName in "${CUTOFF_BRANCHES[@]}"; do
+#     gh api -X PATCH repos/$owner/$repo/branches/$branchName/protection \
+#     --input <(cat <<EOF
+#     {
+#       "required_status_checks": {
+#         "strict": true,
+#         "contexts": []
+#       },
+#       "enforce_admins": true,
+#       "required_pull_request_reviews": {
+#         "dismissal_restrictions": {},
+#         "dismiss_stale_reviews": true,
+#         "require_code_owner_reviews": true,
+#         "required_approving_review_count": 1
+#       },
+#       "restrictions": null,
+#       "required_linear_history": false,
+#       "allow_force_pushes": false,
+#       "allow_deletions": false,
+#       "block_creations": false,
+#       "required_conversation_resolution": true,
+#       "lock_branch": false,
+#       "allow_fork_syncing": false
 #     }
-#   }
-# '
-# TEMPLATE='
-#   {{- range $repo := .data.viewer.repositories.nodes -}}
-#     {{- printf "name: %s - stargazers: %v\n" $repo.nameWithOwner $repo.stargazerCount -}}
-#   {{- end -}}
-# '
-# exec gh api graphql -f query="${QUERY}" --paginate --template="${TEMPLATE}"
+# EOF
+#   )
+#   done
+# }
+
+# function recoveryProtectedBranchRule {
+#   echo -e "\n===> Recovery protection rule to protected branches \n"
+#   for branchName in "${CUTOFF_BRANCHES[@]}"; do
+#     gh api -X PATCH repos/$owner/$repo/branches/$branchName/protection \
+#     --input <(cat <<EOF
+#     {
+#       "required_status_checks": {
+#         "strict": true,
+#         "contexts": []
+#       },
+#       "enforce_admins": true,
+#       "required_pull_request_reviews": {
+#         "dismissal_restrictions": {},
+#         "dismiss_stale_reviews": true,
+#         "require_code_owner_reviews": true,
+#         "required_approving_review_count": 1
+#       },
+#       "restrictions": null,
+#       "required_linear_history": false,
+#       "allow_force_pushes": false,
+#       "allow_deletions": false,
+#       "block_creations": false,
+#       "required_conversation_resolution": true,
+#       "lock_branch": false,
+#       "allow_fork_syncing": false
+#     }
+# EOF
+#   )
+#   done
+# }
+
+
+function array_contains {
+  local search="$1"
+  shift
+  local arr=("$@")
+  for elem in "${arr[@]}"; do
+    if [ "$elem" == "$search" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+function cutoff {
+	echo -e "\n===> execute command cutoff branches on $repo\n"
+
+  for branchName in "${CUTOFF_BRANCHES[@]}"; do
+    echo -e "- backup branch: $branchName"
+
+    RESPONSE=$(gh api /repos/$owner/$repo/branches/$branchName/rename \
+      --method POST \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      -f new_name="$branchName-$TODAY")
+  done
+
+
+  COMMIT=$((gh api /repos/$owner/$repo/branches/master \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" ) | jq -r .commit.sha)
+
+  for branchName in "${CUTOFF_BRANCHES[@]}"; do
+  	echo -e "- create new branch: $branchName from $COMMIT"  
+    RESPONSE=$(gh api /repos/$owner/$repo/git/refs \
+      --method POST \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      -f ref="refs/heads/$branchName" \
+      -f sha="$COMMIT")
+
+    
+  done
+
+}
+
+# openProtectedBranchRule
+cutoff
+# recoveryProtectedBranchRule
+
+
+
+echo -e "===> Done"
