@@ -3,36 +3,20 @@
 
 #!/bin/bash
 
-# Set the name of the organization
-# ORG_NAME="minhtrong-bic"
-CUTOFF_BRANCHES=("develop" "staging")
-
-# REPOSITORIES_IN_SCOPE=(
-#   # "test-bic-clickup-automation"
-#   # "bic-clickup-automation"
-#   # "bic-activity-log-service"
-#   # "bic-feed-service"
-#   # "bic-notification-service"
-#   # "bic-upload-manage-service"
-#   "bic-group-service"
-#   # "bic-group-web"
-#   # "bic-chat-web"
-#   # "bic-chat-service"
-#   # "bic-staff-web"
-# )
-
 TODAY=$(date +%Y%m%d)
 
 owner=""
 repo=""
+branch=""
 
 # Function to display script usage
 function display_usage {
-  echo "Usage: gh cutoff [--o owner] [--r repo]"
+  echo "Usage: gh cutoff -o <owner> -r <repo> -b <branch>"
   echo ""
   echo "Options:"
-  echo "  -o owner        Specify the owner of the repository you want to cutoff branches"
-  echo "  -r repo         Specify the repository you want to cutoff branches"
+  echo "  -o owner        Specify the owner of the repository you want to cutoff a branch"
+  echo "  -r repo         Specify the repository you want to cutoff a branch"
+  echo "  -b branch       Specify the branch you want to cutoff"
   echo ""
   exit 1
 }
@@ -51,6 +35,11 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    -b)
+      branch="$2"
+      shift
+      shift
+      ;;
     *)
       display_usage
       ;;
@@ -62,8 +51,14 @@ if [[ -z "$owner" ]]; then
   echo "Error: owner name is required"
   display_usage
 fi
+
 if [[ -z "$repo" ]]; then
   echo "Error: repo name is required"
+  display_usage
+fi
+
+if [[ -z "$branch" ]]; then
+  echo "Error: branch name is required"
   display_usage
 fi
 
@@ -144,34 +139,27 @@ function array_contains {
 
 function cutoff {
 	echo -e "\n===> execute command cutoff branches on $repo\n"
+  
+  echo -e "- backup branch: $branch\n"
 
-  for branchName in "${CUTOFF_BRANCHES[@]}"; do
-    echo -e "- backup branch: $branchName"
-
-    RESPONSE=$(gh api /repos/$owner/$repo/branches/$branchName/rename \
-      --method POST \
-      -H "Accept: application/vnd.github+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      -f new_name="$branchName-$TODAY")
-  done
+  RESPONSE=$(gh api /repos/$owner/$repo/branches/$branch/rename \
+    --method POST \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    -f new_name="$branch-$TODAY")
 
 
   COMMIT=$((gh api /repos/$owner/$repo/branches/master \
       -H "Accept: application/vnd.github+json" \
       -H "X-GitHub-Api-Version: 2022-11-28" ) | jq -r .commit.sha)
 
-  for branchName in "${CUTOFF_BRANCHES[@]}"; do
-  	echo -e "- create new branch: $branchName from $COMMIT"  
-    RESPONSE=$(gh api /repos/$owner/$repo/git/refs \
-      --method POST \
-      -H "Accept: application/vnd.github+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      -f ref="refs/heads/$branchName" \
-      -f sha="$COMMIT")
-
-    
-  done
-
+	echo -e "- create new branch: $branch from $COMMIT"  
+  RESPONSE=$(gh api /repos/$owner/$repo/git/refs \
+    --method POST \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    -f ref="refs/heads/$branch" \
+    -f sha="$COMMIT")
 }
 
 # openProtectedBranchRule
